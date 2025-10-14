@@ -1,0 +1,6 @@
+/.venv/
+/.envrc
+/.python-version
+.DS_Store
+/.vscode/
+__pycache__/
