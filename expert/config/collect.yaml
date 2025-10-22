@@ -1,0 +1,15 @@
+defaults:  
+  - override hydra/job_logging: disabled
+
+state_dict_path: ???
+timesteps: null
+episodes: null
+render_kwargs:
+  height: 84
+  width: 84
+  camera_id: 0
+device: 'cpu'
+
+hydra:  
+  run:  
+    dir: expert/outputs/demo/${task_name:${state_dict_path}}/${now:%Y-%m-%d_%H-%M-%S}
