@@ -68,3 +68,58 @@ class SquashedDiagGaussianDistribution:
         act = torch.tanh(gaussian_act)
         log_prob = self.log_prob(act, gaussian_act)
         return act, log_prob
+
+class FE(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.convnet = hydra.utils.instantiate(cfg).append(nn.Flatten())
+    
+    def forward(self, obs):
+        obs = obs / 255.0 - 0.5
+        h = self.convnet(obs)
+        return h
+
+class FixedStdActor(nn.Module):
+    def __init__(self, cfg, act_dim):
+        super().__init__()
+        self.mu = hydra.utils.instantiate(cfg).append(nn.LazyLinear(act_dim))
+    
+    def forward(self, obs, std):
+        mu = self.mu(obs)
+        mu = torch.tanh(mu)
+        std = torch.ones_like(mu) * std
+        dist = TruncatedNormal(mu, std)
+        return dist
+
+class TrunkHeadCritic(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.trunk = hydra.utils.instantiate(cfg.trunk)
+        self.q1 = hydra.utils.instantiate(cfg.head).append(nn.LazyLinear(1))
+        self.q2 = hydra.utils.instantiate(cfg.head).append(nn.LazyLinear(1))
+
+    def forward(self, obs, act):
+        h = self.trunk(obs)
+        h_act = torch.cat([h, act], dim=1)
+        return self.q1(h_act).squeeze(1), self.q2(h_act).squeeze(1)
+
+class TruncatedNormal(Normal):
+    def __init__(self, loc, scale, low=-1.0, high=1.0, eps=1e-6):
+        super().__init__(loc, scale, validate_args=False)
+        self.low = low
+        self.high = high
+        self.eps = eps
+
+    def _clamp(self, x):
+        clamped_x = torch.clamp(x, self.low + self.eps, self.high - self.eps)
+        x = x - x.detach() + clamped_x.detach()
+        return x
+
+    def sample(self, clip=None, sample_shape=torch.Size()):
+        shape = self._extended_shape(sample_shape)
+        eps = _standard_normal(shape, dtype=self.loc.dtype, device=self.loc.device)
+        eps *= self.scale
+        if clip is not None:
+            eps = torch.clamp(eps, -clip, clip)
+        x = self.loc + eps
+        return self._clamp(x)
