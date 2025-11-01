@@ -1,0 +1,78 @@
+defaults:  
+  - override hydra/job_logging: disabled
+
+domain: ???
+task: ???
+task_kwargs: null
+environment_kwargs: null
+total_steps: 1_000_000
+random_steps: 1_000
+device: 'cpu'
+
+obs_dim: ???
+action_dim: ???
+
+q_net:
+  _target_: torch.nn.Sequential
+  _args_:
+    - _target_: torch.nn.Linear
+      in_features: ${sum:${obs_dim},${action_dim}}
+      out_features: 256
+    - _target_: torch.nn.ReLU
+    - _target_: torch.nn.Linear
+      in_features: 256
+      out_features: 256
+    - _target_: torch.nn.ReLU
+    - _target_: torch.nn.Linear
+      in_features: 256
+      out_features: 1
+
+tdpg:
+  _target_: tdpg.TDPG
+  encoder:
+    _target_: torch.nn.Identity
+  actor:
+    _target_: networks.DeterministicActor
+    net:
+      _target_: torch.nn.Sequential
+      _args_:
+        - _target_: torch.nn.Linear
+          in_features: ${obs_dim}
+          out_features: 256
+        - _target_: torch.nn.ReLU
+        - _target_: torch.nn.Linear
+          in_features: 256
+          out_features: 256
+        - _target_: torch.nn.ReLU
+        - _target_: torch.nn.Linear
+          in_features: 256
+          out_features: ${action_dim}
+  critic:
+    _target_: networks.DoubleQCritic
+    q1_net: ${q_net}
+    q2_net: ${q_net}
+  adam_kwargs:
+    lr: 3e-4
+  tau: 0.005
+  noise:
+    _target_: tdpg.LinearDecayGaussianNoise
+    init_std: 1.0
+    final_std: 0.01
+    duration: ${mul:${total_steps},0.8}
+    clip: 0.3
+  device: ${device}
+
+replay_buffer:
+  _target_: replay_buffer.ReplayBuffer
+  obs_spec: ???
+  action_spec: ???
+  buffer_size: 1_000_000
+  batch_size: 256
+  gamma: 0.99
+  device: 'cpu'
+
+hydra:
+  run:
+    dir: outputs/expert/${domain}-${task}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: outputs/expert/${domain}-${task}/${now:%Y-%m-%d_%H-%M-%S}
