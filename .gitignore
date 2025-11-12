@@ -1,0 +1,7 @@
+/.python-version
+/.venv/
+/.envrc
+/.vscode/
+.DS_Store
+__pycache__/
+/outputs/
