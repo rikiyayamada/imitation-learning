@@ -1,0 +1,16 @@
+defaults:  
+  - override hydra/job_logging: disabled
+
+state_dict_path: ???
+render_kwargs:
+  height: 84
+  width: 84
+  camera_id: 0
+total_steps: null
+total_episodes: null
+
+hydra:
+  run:
+    dir: outputs/demo/${domain_task:${state_dict_path}}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: outputs/demo/${domain_task:${state_dict_path}}/${now:%Y-%m-%d_%H-%M-%S}

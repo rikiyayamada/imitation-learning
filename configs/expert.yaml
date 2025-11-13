@@ -1,0 +1,77 @@
+defaults:  
+  - override hydra/job_logging: disabled
+  - override hydra/launcher: joblib
+
+domain: ???
+task: ???
+task_kwargs: null
+environment_kwargs: null
+num_action_repeat: 2
+total_steps: ???
+random_steps: 1_000
+
+batch_size: 256
+obs_dim: ???
+obs_shape: ???
+action_dim: ???
+device: 'cpu'
+q_net:
+  _target_: torch.nn.Sequential
+  _args_:
+    - _target_: torch.nn.Linear
+      in_features: ${sum:${obs_dim},${action_dim}}
+      out_features: 256
+    - _target_: torch.nn.ReLU
+    - _target_: torch.nn.Linear
+      in_features: 256
+      out_features: 256
+    - _target_: torch.nn.ReLU
+    - _target_: torch.nn.Linear
+      in_features: 256
+      out_features: 1
+
+rl_agent:
+  _target_: rl.DrQv2
+  actor:
+    _target_: rl.DeterministicActor
+    net:
+      _target_: torch.nn.Sequential
+      _args_:
+        - _target_: torch.nn.Linear
+          in_features: ${obs_dim}
+          out_features: 256
+        - _target_: torch.nn.ReLU
+        - _target_: torch.nn.Linear
+          in_features: 256
+          out_features: 256
+        - _target_: torch.nn.ReLU
+        - _target_: torch.nn.Linear
+          in_features: 256
+          out_features: ${action_dim}
+  critic:
+    _target_: rl.DoubleQCritic
+    q1_net: ${q_net}
+    q2_net: ${q_net}
+  adam_kwargs:
+    lr: 3e-4
+  tau: 0.005
+  noise:
+    _target_: rl.drqv2.LinearDecayGaussianNoise
+    init_std: 1.0
+    final_std: 0.1
+    duration: ${total_steps}
+    clip: 0.3
+  device: ${device}
+
+replay_buffer:
+  _target_: rl.ReplayBuffer
+  obs_shape: ${obs_shape}
+  batch_size: ${batch_size}
+  gamma: 0.99
+  device: ${device}
+
+hydra:
+  run:
+    dir: outputs/${hydra.job.config_name}/${domain}-${task}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: outputs/${hydra.job.config_name}/${domain}-${task}/${now:%Y-%m-%d_%H-%M-%S}
