@@ -1,0 +1,164 @@
+defaults:  
+  - override hydra/job_logging: disabled
+  - override hydra/launcher: joblib
+
+domain: ???
+task: ???
+task_kwargs: null
+environment_kwargs: null
+pixel_obs: True
+render_kwargs:
+  height: 84
+  width: 84
+  camera_id: 0
+num_stack: 3
+num_action_repeat: 2
+total_steps: 1_000_000
+random_steps: 1_000
+n_step: 3
+demo_path: ???
+update_rl_agent_every: 2
+
+batch_size: 256
+obs_shape: ???
+action_dim: ???
+device: ???
+h_dim: 50
+q_net:
+  _target_: torch.nn.Sequential
+  _args_:
+    - _target_: torch.nn.Linear
+      in_features: ${sum:${h_dim},${action_dim},1}
+      out_features: 1024
+    - _target_: torch.nn.ReLU
+      inplace: True
+    - _target_: torch.nn.Linear
+      in_features: 1024
+      out_features: 1024
+    - _target_: torch.nn.ReLU
+      inplace: True
+    - _target_: torch.nn.Linear
+      in_features: 1024
+      out_features: 1
+trunk:
+  _target_: torch.nn.Sequential
+  _args_:
+    - _target_: torch.nn.Linear
+      in_features: 39200
+      out_features: ${h_dim}
+    - _target_: torch.nn.LayerNorm
+      normalized_shape: ${h_dim}
+    - _target_: torch.nn.Tanh
+encoder:
+  _target_: rl.Encoder
+  convnet:
+    _target_: torch.nn.Sequential
+    _args_:
+      - _target_: torch.nn.Conv2d
+        in_channels: ${mul:3,${num_stack}}
+        out_channels: 32
+        kernel_size: 3
+        stride: 2
+      - _target_: torch.nn.ReLU
+      - _target_: torch.nn.Conv2d
+        in_channels: 32
+        out_channels: 32
+        kernel_size: 3
+        stride: 1
+      - _target_: torch.nn.ReLU
+      - _target_: torch.nn.Conv2d
+        in_channels: 32
+        out_channels: 32
+        kernel_size: 3
+        stride: 1
+      - _target_: torch.nn.ReLU
+      - _target_: torch.nn.Conv2d
+        in_channels: 32
+        out_channels: 32
+        kernel_size: 3
+        stride: 1
+      - _target_: torch.nn.ReLU
+      - _target_: torch.nn.Flatten
+aug:
+  _target_: rl.drqv2.RandomShiftsAug
+  pad: 4
+
+rl_agent:
+  _target_: rl.DrQv2
+  actor:
+    _target_: rl.DeterministicActor
+    trunk: ${trunk}
+    net:
+      _target_: torch.nn.Sequential
+      _args_:
+        - _target_: torch.nn.Linear
+          in_features: ${sum:${h_dim},1}
+          out_features: 1024
+        - _target_: torch.nn.ReLU
+          inplace: True
+        - _target_: torch.nn.Linear
+          in_features: 1024
+          out_features: 1024
+        - _target_: torch.nn.ReLU
+          inplace: True
+        - _target_: torch.nn.Linear
+          in_features: 1024
+          out_features: ${action_dim}
+  critic:
+    _target_: rl.DoubleQCritic
+    trunk: ${trunk}
+    q1_net: ${q_net}
+    q2_net: ${q_net}
+  adam_kwargs:
+    lr: 1e-4
+  tau: 0.01
+  noise:
+    _target_: rl.drqv2.LinearDecayGaussianNoise
+    init_std: 1.0
+    final_std: 0.1
+    duration: ${total_steps}
+    clip: 0.3
+  device: ${device}
+  encoder: ${encoder}
+  aug: ${aug}
+
+il_agent:
+  _target_: il.dac.DAC
+  rl_agent: ${rl_agent}
+  discriminator:
+    _target_: il.Discriminator
+    net:
+      _target_: torch.nn.Sequential
+      _args_:
+        - _target_: torch.nn.Linear
+          in_features: ${sum:${h_dim},${action_dim},1}
+          out_features: 64
+        - _target_: torch.nn.ReLU
+          inplace: True
+        - _target_: torch.nn.Linear
+          in_features: 64
+          out_features: 64
+        - _target_: torch.nn.ReLU
+          inplace: True
+        - _target_: torch.nn.Linear
+          in_features: 64
+          out_features: 1
+  adam_kwargs:
+    lr: 1e-4
+  replay_buffer:
+    _target_: il.ReplayBuffer
+    obs_shape: ${obs_shape}
+    batch_size: ${batch_size}
+    gamma: 0.99
+    n_step: ${n_step}
+    num_stack: ${num_stack}
+    device: ${device}
+    pixel_obs: ${pixel_obs}
+  demo_path: ${demo_path}
+  update_rl_agent_every: ${update_rl_agent_every}
+
+hydra:
+  run:
+    dir: outputs/dac/${domain}-${task}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: outputs/dac/${domain}-${task}/${now:%Y-%m-%d_%H-%M-%S}
